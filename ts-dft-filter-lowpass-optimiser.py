@@ -4,8 +4,8 @@
 #------------------------------------------------------------------------------
 # PROGRAM: ts-fft-filter-lowpass-optimiser.py
 #------------------------------------------------------------------------------
-# Version 0.1
-# 26 July, 2021
+# Version 0.2
+# 28 July, 2021
 # Michael Taylor
 # https://patternizer.github.io
 # patternizer AT gmail DOT com
@@ -14,8 +14,6 @@
 
 import numpy as np
 import pandas as pd
-from scipy import fftpack
-from scipy.fftpack import fftfreq
 import matplotlib.pyplot as plt
 import seaborn as sns; sns.set()
 
@@ -23,19 +21,19 @@ import seaborn as sns; sns.set()
 # SETTINGS
 #-----------------------------------------------------------------------------
 
-fc = 0 # --> estimate from spectrum    
-fontsize = 16
-use_filter = True
-make_plot = True
-make_plot_loop = True
-
 stationcode = '037401'
+
+fontsize = 16
+make_plot_loop = False                                           # True --> loop over pctl [0,100,0.1] to generate LUT
+use_filter = True                                               # True --> Hamming window, False --> cut-off (no window)
+show_pandas = True                                              # Overlay equi-window Pandas smoother
    
 #-----------------------------------------------------------------------------
 # METHODS
 #-----------------------------------------------------------------------------
 
 def nextpowerof2(x):
+    
     if x > 1:
         for i in range(1, int(x)):
             if ( 2**i >= x ):
@@ -65,13 +63,16 @@ def idft(x):
         
     return 1/N * np.dot(e, x)
     
-def fft_filter(y, fc, use_filter):
+def dft_filter(y):
 
     N = len(y)                                                      # signal length
     n = np.arange(N)
     Fs = 1                                                          # sampling rate
     Ts = N/Fs                                                       # sampling interval 
-    freq = n/Ts                                                     # frequencies [0,1] 
+    f = n/Ts                                                        # frequencies [0,1] 
+    freqA = f[0:int(N/2)]                                           # frequencies: RHS
+    freqB = f[int(N/2):]-1                                          # frequencies: LHS
+    freq = np.array(list(freqA) + list(freqB))                      # construct SciPy's fftfreq(len(y), d=1) function
        
     y_mean = np.nanmean(y)
     y = y - y_mean                                                  # cneter timeseries (NB: add back in later)
@@ -84,41 +85,42 @@ def fft_filter(y, fc, use_filter):
     zvarsum = np.sum(zvar)                                          # total variance of spectrum
     yvarsum = np.var(y)                                             # total variance of timeseries
     zvarpc = zvar / zvarsum                                         # percentage variance per harmonic
-
-    y_hi_mean_min = 1.0
-    zvarhimax = 0.0
     
+    # GENERATE: look-up table pctl <--> fc <--> zvarlo & zvarhi
+
     vec_pctl = []
     vec_fc = []
     vec_zvarlo = []
     vec_zvarhi = []
     vec_y_hi_mean = []
         
-    for pctl in np.arange(0.0,100.0,0.1):
+    for pctl in np.arange(0,100,0.1):
                                
-        zpeaks = zvarpc[ zvarpc > ( np.percentile(zvarpc, pctl) ) ]     # high variance peaks > q(pctl)
+        zpeaks = zvarpc[ zvarpc > ( np.percentile(zvarpc, pctl) ) ]     # high variance peaks > p(pctl)
         zpeaks_idx = np.argsort( zpeaks )                               # peak indices
         znopeaks_idx = np.setdiff1d( np.argsort( zvarpc ), zpeaks_idx)  # remaining indices
         npeaks = len(zpeaks_idx)                                        # number of peaks
         zvarlo = np.sum( [zvarpc[i] for i in zpeaks_idx] )              # total percentage variance of low pass 
         zvarhi = np.sum( [zvarpc[i] for i in znopeaks_idx] )            # total percentage variance of high pass  
 
-        fc = freq[ zpeaks_idx.max() ]                                   # low pass / high pass cut-off       
+        fc = f[ zpeaks_idx.max() ]                                      # low pass / high pass cut-off       
                 
+        print('pctl',pctl)
+        print('fc',fc)
+        
         if use_filter == False:
             
-            # FFT zero-order estimate: low pass filter (no window)
+            # DFT zero-order estimate: low pass filter (no window)
              
-            y_fft = fftpack.fft(y)
-            y_fft_filtered = y_fft.copy()
-            frequencies = fftfreq(len(y), d=1)    
-            y_fft_filtered[ np.abs(frequencies) > fc ] = 0               # low-pass filter
-            y_filtered_lo = np.real( fftpack.ifft(y_fft_filtered) )      # low pass signal
-            y_filtered_hi = y - y_filtered_lo                            # high pass signal
+            y_dft = dft(y)
+            y_dft_filtered = y_dft.copy()
+            y_dft_filtered[ np.abs(freq) > fc ] = 0                     # low-pass filter
+            y_filtered_lo = np.real( idft(y_dft_filtered) )             # low pass signal
+            y_filtered_hi = y - y_filtered_lo                           # high pass signal
     
         else:
             
-            # FILTER DESIGN: low pass filter (Hamming window)
+            # FILTER DESIGN: low pass filter (Hamming window) with zero-padding
             
             L = N+1                                                     # filter length (M+1)
             h_support = np.arange( -int((L-1)/2), int((L-1)/2)+1 )      # filter support
@@ -128,20 +130,20 @@ def fft_filter(y, fc, use_filter):
             # ZERO-PAD: (next power of 2 > L+M-1) signal and impulse-response
             
             #Nfft = int(2**(np.ceil(np.log2(L+N-1))))
-            Nfft = nextpowerof2(L+N-1)
-            yzp = list(y) + list(np.zeros(Nfft-N+1))
-            hzp = list(h) + list(np.zeros(Nfft-L+1))    
+            Ndft = nextpowerof2(L+N-1)
+            yzp = list(y) + list(np.zeros(Ndft-N+1))
+            hzp = list(h) + list(np.zeros(Ndft-L+1))    
             
             # COMPUTE: FFT of signal and filter in freq domain
             
-            Y = fftpack.fft(yzp)                                        # FFT signal 
-            H = fftpack.fft(hzp)                                        # FFT filter
+            Y = dft(yzp)                                                # DFT signal 
+            H = dft(hzp)                                                # DFT filter
             
             # COMPUTE: cyclic convolution (pairwise product) of signal and filter in freq domain
             
             Z = np.multiply(Y, H)
-            y_filtered_lo = np.real( fftpack.ifft(Z)[int(N/2):N+int((N)/2)] ) # low pass signal    
-            y_filtered_hi = y - y_filtered_lo                                 # high pass signal
+            y_filtered_lo = np.real( idft(Z)[int(N/2):N+int((N)/2)] )   # low pass signal    
+            y_filtered_hi = y - y_filtered_lo                           # high pass signal
 
         y_hi_mean = np.nanmean(y_filtered_hi)
                            
@@ -159,20 +161,26 @@ def fft_filter(y, fc, use_filter):
 
         if make_plot_loop:
         
-            figstr = 'ts-fft-filter' + '-' + 'pctl' + '-' + str(np.round(pctl,1)) + '.png'
+            figstr = 'ts-dft-filter' + '-' + 'pctl' + '-' + str(np.round(pctl,1)) + '.png'
                             
             fig, ax = plt.subplots(figsize=(15,10))
             plt.subplot(211)
-            plt.plot(t, y, ls='-', lw=1, color='blue', alpha=0.5, label='signal: fc=' + str(np.round(fc,3)) + ' Hz')     
-            plt.plot(t, y_filtered_lo, ls='-', lw=3, color='blue', label=r'FFT low pass ($\nu$=' + str(np.round(zvarlo*100.0,3)) + r'%): P$\geq$p(' + str(np.round(pctl,1)) + ')')    
+            plt.plot(t, y, ls='-', lw=1, color='blue', alpha=0.5, label='signal: yearly')                             
+            if show_pandas == True:
+                if fc < 1e-16:
+                    T = N
+                else:
+                    T = int(1/fc)            
+                plt.plot(t, pd.Series(y).rolling(T,center=True).mean(), ls='-', lw=3, color='red', alpha=1, label='Pandas rolling(' + str(T) + ')')            
+            plt.plot(t, y_filtered_lo, ls='-', lw=3, color='blue', label=r'DFT low pass ($\nu$=' + str(np.round(zvarlo*100.0,2)) + '%)' + ': T=' + str(T) + ', fc=' + str(np.round(fc,2)) + r', P$\geq$p(' + str(np.round(pctl,1)) + ')')   
             plt.ylim(-3,2)
             plt.tick_params(labelsize=fontsize)    
             plt.ylabel(r'T(2m) anomaly (from 1981-2010), $^{\circ}$C', fontsize=fontsize)
             plt.legend(loc='lower right', ncol=1, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)   
             plt.subplot(212)
-            plt.plot(t, y_filtered_hi, ls='-', lw=1, color='teal', alpha=1, label=r'FFT high pass ($\nu$=' + str(np.round(zvarhi*100.0,3)) + '%)')    
+            plt.plot(t, y_filtered_hi, ls='-', lw=1, color='teal', alpha=1, label=r'DFT high pass ($\nu$=' + str(np.round(zvarhi*100.0,2)) + '%)' + r': $\mu$=' + str(np.round(np.mean(y_filtered_hi),2)) + r'$^{\circ}$C')
+            plt.axhline(y=np.nanmean(y_filtered_hi), ls='--', lw=1, color='black' )
             plt.ylim(-3,2)
-            plt.axhline(y=y_hi_mean, ls='--', lw=1, color='black', label=r'$\mu$=' + str(np.round(y_hi_mean,3)) )
             plt.tick_params(labelsize=fontsize)    
             plt.xlabel('Time', fontsize=fontsize)
             plt.ylabel(r'T(2m) anomaly (from 1981-2010), $^{\circ}$C', fontsize=fontsize)
@@ -182,36 +190,11 @@ def fft_filter(y, fc, use_filter):
             fig.tight_layout()
             plt.savefig(figstr, dpi=300)
             plt.close('all')    
-                
-        if (zvarhi > zvarhimax):
-            
-            zvarhimax = zvarhi
-            
-            y_filtered_lo_best = y_filtered_lo
-            y_filtered_hi_best = y_filtered_hi
-            zvarlo_best = zvarlo
-            zvarhi_best = zvarhi
-            pctl_best = pctl
-            fc_best = fc
-            
-        else:
-            
-            continue
-        
-    y_filterred_lo = y_filtered_lo_best
-    y_filterred_hi = y_filtered_hi_best
-    zvarlo = zvarlo_best
-    zvarhi = zvarhi_best
-    pctl = pctl_best
-    fc = fc_best
 
     df = pd.DataFrame({'pctl':vec_pctl, 'fc':vec_fc, 'zvarlo':vec_zvarlo, 'zvarhi':vec_zvarhi, 'y_hi_mean':vec_y_hi_mean})
     df['period'] = 1.0/df['fc']
     df.to_csv('ml_optimisation.csv')                       
-            
-    print('fc_best=', fc)
-    print('pctl_best=', pctl)
-            
+                        
     return y_filtered_lo + y_mean, y_filtered_hi, zvarlo, zvarhi, pctl, fc
 
 if __name__ == "__main__":
@@ -243,33 +226,37 @@ if __name__ == "__main__":
     # COMPUTE: FFT low and high pass --> y_lo, y_hi
     #------------------------------------------------------------------------------
 
-    y_lo, y_hi, zvarlo, zvarhi, pctl, fc = fft_filter(y,0,use_filter)
+    y_lo, y_hi, zvarlo, zvarhi, pctl, fc = dft_filter(y)
+    
+    #------------------------------------------------------------------------------
+    # PLOT: optimisation parameters
+    #------------------------------------------------------------------------------
 
-    if make_plot:
-
-        y_hi_mean = np.nanmean(y_hi)
-        
-        fig, ax = plt.subplots(figsize=(15,10))
-        plt.subplot(211)
-        plt.plot(t, y, ls='-', lw=1, color='blue', alpha=0.5, label='signal: fc=' + str(np.round(fc,3)) + ' Hz')     
-        plt.plot(t, y_lo, ls='-', lw=3, color='blue', label=r'FFT low pass ($\nu$=' + str(np.round(zvarlo*100.0,3)) + r'%): P$\geq$p(' + str(np.round(pctl,1)) + ')')    
-        plt.ylim(-3,2)
-        plt.tick_params(labelsize=fontsize)    
-        plt.ylabel(r'T(2m) anomaly (from 1981-2010), $^{\circ}$C', fontsize=fontsize)
-        plt.legend(loc='lower right', ncol=1, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)   
-        plt.subplot(212)
-        plt.plot(t, y_hi, ls='-', lw=1, color='teal', alpha=1, label=r'FFT high pass ($\nu$=' + str(np.round(zvarhi*100.0,3)) + '%)')    
-        plt.ylim(-3,2)
-        plt.axhline(y=y_hi_mean, ls='--', lw=1, color='black', label=r'$\mu$=' + str(np.round(y_hi_mean,3)) )
-        plt.tick_params(labelsize=fontsize)    
-        plt.xlabel('Time', fontsize=fontsize)
-        plt.ylabel(r'T(2m) anomaly (from 1981-2010), $^{\circ}$C', fontsize=fontsize)
-        plt.legend(loc='lower right', ncol=1, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)   
-#       plt.suptitle(stationname + ' (' + stationcode + ')')
-        plt.suptitle('HadCET (' + stationcode + ')')
-        fig.tight_layout()
-        plt.savefig('ts-fft-filter.png', dpi=300)
-        plt.close('all')    
+    df = pd.read_csv('OUT/ml_optimisation.csv')
+    df['y_hi_mean'][df['fc']==0] = np.nan
+            
+    figstr = 'ts-dft-filter' + '-' + 'optimisation.png'
+                            
+    fig, ax = plt.subplots(figsize=(15,10))
+    plt.subplot(211)
+    plt.plot(df.pctl, df.fc, ls='-', lw=3, color='purple', alpha=1, label='fc')                             
+    plt.plot(df.pctl, df.zvarlo, ls='-', lw=3, color='red', label=r'DFT low pass ($\nu$)')   
+    plt.plot(df.pctl, df.zvarhi, ls='-', lw=3, color='blue', label=r'DFT high pass ($\nu$)')   
+    plt.tick_params(labelsize=fontsize)    
+    plt.xlabel('Percentile', fontsize=fontsize)
+    plt.ylabel('Magnitude', fontsize=fontsize)
+    plt.legend(loc='upper center', ncol=3, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)   
+    plt.subplot(212)
+    plt.plot(df.pctl, df.y_hi_mean, ls='-', lw=3, color='teal', alpha=1, label=r'DFT high pass ($\nu$) mean')
+    plt.tick_params(labelsize=fontsize)    
+    plt.xlabel('Percentile', fontsize=fontsize)
+    plt.ylabel('Magnitude', fontsize=fontsize)
+    plt.legend(loc='upper center', ncol=3, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)   
+#   plt.suptitle(stationname + ' (' + stationcode + ')')
+    plt.suptitle('HadCET (' + stationcode + ')')
+    fig.tight_layout()
+    plt.savefig(figstr, dpi=300)
+    plt.close('all')        
 
 #------------------------------------------------------------------------------
 print('** END')
