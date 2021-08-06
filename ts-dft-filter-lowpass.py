@@ -23,7 +23,7 @@ import seaborn as sns; sns.set()
 # SETTINGS
 #-----------------------------------------------------------------------------
 
-w = 10                                                          # smoothing windows >= 2 (Nyquist freq) 
+w = 5                                                          # smoothing windows >= 2 (Nyquist freq) 
 stationcode = '037401'
 
 fontsize = 16
