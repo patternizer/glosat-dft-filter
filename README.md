@@ -1,5 +1,5 @@
-![image](https://github.com/patternizer/glosat-dft-filter/blob/main/ts-dft-filter-pctl-90.png)
-![image](https://github.com/patternizer/glosat-dft-filter/blob/main/ts-dft-filter-pctl-80.png)
+![image](https://github.com/patternizer/glosat-dft-filter/blob/main/ts-dft-filter-5.png)
+![image](https://github.com/patternizer/glosat-dft-filter/blob/main/ts-dft-filter-10.png)
 ![image](https://github.com/patternizer/glosat-dft-filter/blob/main/ts-dft-filter-optimisation.png)
 
 # glosat-dft-filter
@@ -11,9 +11,10 @@ Python codebase to calculate DFT-filtered timeseries using a Hamming window filt
 * `ts-dft-filter-lowpass-no-window.py` - python script DFT low pass filter using a cut-off frequency and no window
 * `ts-dft-filter-lowpass-hamming-window.py` - python script DFT low pass filter using a hamming window filter and zero-padding
 * `ts-dft-filter-lowpass-extrapolation.py` - python script DFT low pass filter extrapolation estimate for periodic timeseries
-* `ts-dft-filter-lowpass.py` - python script DFT low pass filter for given cut-off frequency and low pass variance percentile
+* `ts-dft-filter-lowpass.py` - python script DFT low pass filter for given smoothing window size
 * `ts-dft-filter-lowpass-optimiser.py` - python script DFT low pass filter look-up table ML generator for low pass variance percentiles in the range [0,100,0.1]
 * `filter_cru.py` - python translation of IDL Gaussian filter code
+* `filter_cru_wrapper.py` - python wrapper calling filter_cru.py
 * `OUT/ml_optimisation.csv` - look-up table of variance percentile, cut-off frequency, low and high pass signal variance, high pass signal mean, and smoothing period (years)
 
 ## Instructions for use

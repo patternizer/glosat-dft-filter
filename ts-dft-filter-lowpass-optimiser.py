@@ -4,8 +4,8 @@
 #------------------------------------------------------------------------------
 # PROGRAM: ts-fft-filter-lowpass-optimiser.py
 #------------------------------------------------------------------------------
-# Version 0.2
-# 28 July, 2021
+# Version 0.3
+# 6 August, 2021
 # Michael Taylor
 # https://patternizer.github.io
 # patternizer AT gmail DOT com
@@ -24,10 +24,12 @@ import seaborn as sns; sns.set()
 stationcode = '037401'
 
 fontsize = 16
-make_plot_loop = False                                           # True --> loop over pctl [0,100,0.1] to generate LUT
+make_plot_loop = False                                          # True --> loop over pctl [0,100,0.1] to generate LUT
 use_filter = True                                               # True --> Hamming window, False --> cut-off (no window)
 show_pandas = True                                              # Overlay equi-window Pandas smoother
-   
+show_gaussian = True                                            # Overlay CRU Gaussian filter   
+pctl_stepsize = 0.01
+
 #-----------------------------------------------------------------------------
 # METHODS
 #-----------------------------------------------------------------------------
@@ -94,7 +96,7 @@ def dft_filter(y):
     vec_zvarhi = []
     vec_y_hi_mean = []
         
-    for pctl in np.arange(0,100,0.1):
+    for pctl in np.arange(0,100,pctl_stepsize):
                                
         zpeaks = zvarpc[ zvarpc > ( np.percentile(zvarpc, pctl) ) ]     # high variance peaks > p(pctl)
         zpeaks_idx = np.argsort( zpeaks )                               # peak indices
@@ -165,14 +167,14 @@ def dft_filter(y):
                             
             fig, ax = plt.subplots(figsize=(15,10))
             plt.subplot(211)
-            plt.plot(t, y, ls='-', lw=1, color='blue', alpha=0.5, label='signal: yearly')                             
+            plt.plot(t, y + y_mean, ls='-', lw=1, color='blue', alpha=0.5, label='signal: yearly')                             
             if show_pandas == True:
                 if fc < 1e-16:
                     T = N
                 else:
                     T = int(1/fc)            
-                plt.plot(t, pd.Series(y).rolling(T,center=True).mean(), ls='-', lw=3, color='red', alpha=1, label='Pandas rolling(' + str(T) + ')')            
-            plt.plot(t, y_filtered_lo, ls='-', lw=3, color='blue', label=r'DFT low pass ($\nu$=' + str(np.round(zvarlo*100.0,2)) + '%)' + ': T=' + str(T) + ', fc=' + str(np.round(fc,2)) + r', P$\geq$p(' + str(np.round(pctl,1)) + ')')   
+                plt.plot(t, pd.Series(y + y_mean).rolling(T,center=True).mean(), ls='-', lw=3, color='red', alpha=1, label='Pandas rolling(' + str(T) + ')')            
+            plt.plot(t, y_filtered_lo + y_mean, ls='-', lw=3, color='blue', label=r'DFT low pass ($\nu$=' + str(np.round(zvarlo*100.0,2)) + '%)' + ': w=' + str(T) + ', fc=' + str(np.round(fc,2)) + r', P$\geq$p(' + str(np.round(pctl,1)) + ')')   
             plt.ylim(-3,2)
             plt.tick_params(labelsize=fontsize)    
             plt.ylabel(r'T(2m) anomaly (from 1981-2010), $^{\circ}$C', fontsize=fontsize)
@@ -193,7 +195,7 @@ def dft_filter(y):
 
     df = pd.DataFrame({'pctl':vec_pctl, 'fc':vec_fc, 'zvarlo':vec_zvarlo, 'zvarhi':vec_zvarhi, 'y_hi_mean':vec_y_hi_mean})
     df['period'] = 1.0/df['fc']
-    df.to_csv('ml_optimisation.csv')                       
+#    df.to_csv('ml_optimisation.csv')                       
                         
     return y_filtered_lo + y_mean, y_filtered_hi, zvarlo, zvarhi, pctl, fc
 
@@ -239,18 +241,33 @@ if __name__ == "__main__":
                             
     fig, ax = plt.subplots(figsize=(15,10))
     plt.subplot(211)
-    plt.plot(df.pctl, df.fc, ls='-', lw=3, color='purple', alpha=1, label='fc')                             
-    plt.plot(df.pctl, df.zvarlo, ls='-', lw=3, color='red', label=r'DFT low pass ($\nu$)')   
-    plt.plot(df.pctl, df.zvarhi, ls='-', lw=3, color='blue', label=r'DFT high pass ($\nu$)')   
+    plt.fill_between(df.pctl, 0, df.zvarlo, ls='-', lw=3, color='red', alpha=0.5, label=r'DFT low pass variance ($\nu$) fraction')   
+    plt.fill_between(df.pctl, 0, df.zvarhi, ls='-', lw=3, color='blue', alpha=0.5, label=r'DFT high pass variance ($\nu$) fraction')   
+    plt.axhline(y=0.5, ls='--', lw=1, color='black')
+    plt.axvline(x=50, ls='--', lw=1, color='black')    
+    plt.text(x=50+0.5, y=0.0+0.02, s='P=p(50)', fontsize=fontsize)
+    plt.text(x=0+0.5, y=0.5+0.02, s=r'Nyquist frequency: $f_{s}/2=0.5 Hz$', fontsize=fontsize)        
+    plt.plot(df.pctl, df.fc, ls='--', lw=3, color='teal', alpha=1, label='frequency cut-off ($f_c$)')                             
+    plt.plot(df.pctl, 1./(df.fc*len(y)), ls='--', lw=3, color='darkorange', alpha=1, label='Smoothing (w/N)')                             
+    plt.xlim(0,100)
+    plt.ylim(0,1)
     plt.tick_params(labelsize=fontsize)    
-    plt.xlabel('Percentile', fontsize=fontsize)
-    plt.ylabel('Magnitude', fontsize=fontsize)
-    plt.legend(loc='upper center', ncol=3, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)   
+#   plt.xlabel('Percentile (P), %', fontsize=fontsize)
+#   plt.ylabel('Magnitude', fontsize=fontsize)
+    plt.legend(loc='upper center', ncol=1, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)   
+
     plt.subplot(212)
-    plt.plot(df.pctl, df.y_hi_mean, ls='-', lw=3, color='teal', alpha=1, label=r'DFT high pass ($\nu$) mean')
+
+    ymax = np.nanmax( np.abs( df.y_hi_mean ) )
+
+    plt.plot(df.pctl, df.y_hi_mean, ls='-', lw=3, color='teal', alpha=1, label=r'DFT high pass signal mean ($\mu$)')
+    plt.axhline(y=0.0, ls='--', lw=1, color='black')    
+    plt.text(x=0+0.5, y=0.0+ymax/20, s=r'$\mu$=0.0', fontsize=fontsize)        
+    plt.xlim(0,100)
+    plt.ylim(-0.01,0.01)
     plt.tick_params(labelsize=fontsize)    
-    plt.xlabel('Percentile', fontsize=fontsize)
-    plt.ylabel('Magnitude', fontsize=fontsize)
+    plt.xlabel('Percentile (P), %', fontsize=fontsize)
+#   plt.ylabel('Magnitude', fontsize=fontsize)
     plt.legend(loc='upper center', ncol=3, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)   
 #   plt.suptitle(stationname + ' (' + stationcode + ')')
     plt.suptitle('HadCET (' + stationcode + ')')
