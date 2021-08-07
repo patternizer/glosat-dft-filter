@@ -8,14 +8,12 @@ Python codebase to calculate DFT-filtered timeseries using a Hamming window filt
 
 ## Contents
 
-* `ts-dft-filter-lowpass-no-window.py` - python script DFT low pass filter using a cut-off frequency and no window
-* `ts-dft-filter-lowpass-hamming-window.py` - python script DFT low pass filter using a hamming window filter and zero-padding
-* `ts-dft-filter-lowpass-extrapolation.py` - python script DFT low pass filter extrapolation estimate for periodic timeseries
-* `ts-dft-filter-lowpass.py` - python script DFT low pass filter for given smoothing window size
-* `ts-dft-filter-lowpass-optimiser.py` - python script DFT low pass filter look-up table ML generator for low pass variance percentiles in the range [0,100,0.1]
-* `filter_cru.py` - python translation of IDL Gaussian filter code
-* `filter_cru_wrapper.py` - python wrapper calling filter_cru.py
-* `OUT/ml_optimisation.csv` - look-up table of variance percentile, cut-off frequency, low and high pass signal variance, high pass signal mean, and smoothing period (years)
+* `ts-dft-filter-lowpass-optimiser.py` - python DFT low pass filter look-up table ML generator for low pass variance percentiles in the range [0,100,0.1]
+* `filter_cru_dft.py` - python script DFT low pass filter using a hamming window with zero-padding
+* `filter_cru_dft_wrapper.py` - python wrapper calling filter_cru_dft.py
+* `filter_cru_gaussian.py` - python translation of CRU IDL Gaussian weighted filter code
+* `filter_cru_gaussian_wrapper.py` - python wrapper calling filter_cru_gaussian.py
+* `ml_optimisation.csv` - look-up table of variance percentile, cut-off frequency, low and high pass signal variance, high pass signal mean, and smoothing period (years)
 
 ## Instructions for use
 
@@ -28,15 +26,16 @@ Then create a DATA/ directory and copy to it the required GloSAT.p03 pickled tem
 
 ### Using Standard Python
 
-The code is designed to run in an environment using Miniconda3-latest-Linux-x86_64.
+The code is designed to run in an environment using Miniconda3-latest-Linux-x86_64. You can set the GloSAT station code in the wrapper functions which will perform the timeseries filtering.
 
-    $ python ts-dft-filter-lowpass-no-window.py
-    $ python ts-dft-filter-lowpass-hamming-window.py
-    $ python ts-dft-filter-lowpass-extrapolation.py
-    $ python ts-dft-filter-lowpass.py
-    $ python ts-dft-filter-lowpass-optimiser.py
-    $ python filter_cru.py
+    $ python filter_cru_dft_wrapper.py
+    $ python filter_cru_gaussian_wrapper.py
 
+The syntax for the filter functions are as follows (please see the doc strings for further details):
+
+	tslow, tshigh, weight = cru_filter(thalf, tsin, nan, truncate)
+	y_lo, y_hi, zvarlo, zvarhi, fc, pctl = dft_filter(y, w)
+    
 ## License
 
 The code is distributed under terms and conditions of the [Open Government License](http://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).
